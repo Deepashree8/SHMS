@@ -58,7 +58,7 @@ const UserForm = () => {
       console.error('Registration failed:', error.response?.data || error.message);
       alert('Error registering patient');
     }
-  };
+  }; 
 
   return (
     <div className="form-container">

@@ -4,3 +4,6 @@ motor
 python-multipart
 pydantic
 h5py
+uvicorn 
+twilio 
+pymongo

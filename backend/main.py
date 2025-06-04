@@ -3,15 +3,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from bson.objectid import ObjectId
 from database import patients_collection
+from database import doctor_collection
+from database import appointment_collection
 from pydantic import BaseModel
-from twilio.rest import Client
+#from twilio.rest import Client
 import pandas as pd
 import base64
 import requests
 import re
 import os
 import traceback
-from dotenv import load_dotenv
+#from dotenv import load_dotenv
 from fastapi import Body
 from bson import ObjectId
 from datetime import datetime
@@ -28,12 +30,18 @@ from fastapi import APIRouter
 import json
 from concurrent.futures import ThreadPoolExecutor
 import asyncio
-from flask import Flask, jsonify 
+#from flask import Flask, jsonify 
 import h5py
+import uuid
+from fastapi.encoders import jsonable_encoder
+from fastapi import Query
+
+from fastapi import APIRouter
+from motor.motor_asyncio import AsyncIOMotorClient
 
 # Load environment variables
 
-load_dotenv()
+#load_dotenv()
 
 app = FastAPI()
 router = APIRouter()
@@ -54,7 +62,7 @@ app.include_router(db2_router)
 account_sid = os.getenv("TWILIO_ACCOUNT_SID")
 auth_token = os.getenv("TWILIO_AUTH_TOKEN")
 twilio_number = os.getenv("TWILIO_PHONE_NUMBER")
-twilio_client = Client(account_sid, auth_token)
+#twilio_client = Client(account_sid, auth_token)
 
 # Patient Model for prediction
 class Patient(BaseModel):
@@ -65,6 +73,107 @@ class Patient(BaseModel):
     unitvisitnumber: int
     apacheadmissiondx: str
 
+
+class AppointmentCreate(BaseModel):
+    patient_id: str
+    doctor_id: str
+    department: str
+    date: str
+    time: str
+    reason: str
+
+
+
+##1.Root
+@app.get("/")
+def read_root():
+    return {"message": "FastAPI server is running!"}
+
+
+
+# GET /patients
+@app.get("/patients")
+async def get_patients():
+    patients = []
+    cursor = patients_collection.find({}, {"name": 1, "age": 1})  # Projection to include only name and age
+    async for patient in cursor.limit(100):
+        patients.append(patient)
+    return JSONResponse(content=jsonable_encoder(patients, custom_encoder={ObjectId: str}))
+
+
+
+
+
+
+@app.get("/doctors")
+async def get_doctors(department: str = Query(None)):
+    doctors = []
+    query = {"department": department} if department else {}
+    async for doctor in doctor_collection.find(query).limit(100):
+        doctors.append(doctor)
+    return JSONResponse(content=jsonable_encoder(doctors, custom_encoder={ObjectId: str}))
+
+
+
+# POST /appointments
+@app.post("/appointments")
+def create_appointment(appointment: AppointmentCreate):
+    try:
+        appointment_collection.insert_one({
+            "patient_id": ObjectId(appointment.patient_id),
+            "doctor_id": ObjectId(appointment.doctor_id),
+            "department": appointment.department,
+            "date": appointment.date,
+            "time": appointment.time,
+            "reason": appointment.reason,
+        })
+        return {"message": "Appointment created successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/appointments/doctor/{doctor_id}")
+async def get_appointments_for_doctor(doctor_id: str):
+    appointments = []
+    async for a in appointment_collection.find({"doctor_id": ObjectId(doctor_id)}):
+        patient = await patients_collection.find_one({"_id": a["patient_id"]})
+
+        if patient:
+            appointments.append({
+                "id": str(a["_id"]),
+                "appointmentDate": a["date"],
+                "appointmentTime": a["time"],
+                "reason": a["reason"],
+                "doctorDiagnosis": a.get("doctorDiagnosis", ""),
+                "remarks": a.get("remarks", ""),
+                "patient": {
+                    "name": patient.get("name", ""),
+                    "age": patient.get("age", ""),
+                    "gender": patient.get("gender", ""),
+                    "face": patient.get("face", ""),
+                    "diagnosis": patient.get("diagnosis", ""),
+                    "address": patient.get("address", ""),
+                    "height": patient.get("height", ""),
+                    "weight": patient.get("weight", ""),
+                    "bloodSugarLevel": patient.get("bloodSugarLevel", ""),
+                    "bloodPressure": patient.get("bloodPressure", ""),
+                    "reasonForVisit": a["reason"]
+                }
+            })
+
+    return appointments
+
+
+
+
+
+
+
+
+
+
+
+
+################################
 # Clean dataset for few-shot prompting
 df = pd.read_csv("EHR_cleaned.csv")
 
@@ -129,22 +238,7 @@ def parse_response(result_json):
     content = result_json["choices"][0]["message"]["content"].strip()
     match = re.search(r"visit type to be: (\w+)", content, re.IGNORECASE)
     return match.group(1) if match else content
-
-@app.get("/")
-def read_root():
-    return {"message": "FastAPI server is running!"}
-
-@app.get("/api/patients")
-async def get_patients():
-    patients = []
-    async for patient in patients_collection.find({}, {"_id": 0}):
-        patients.append(patient)
-    return patients
-
-
-
-
-
+###################
 
 def get_valid_int(doc, field_name):
     value = doc.get(field_name, "")
@@ -152,8 +246,8 @@ def get_valid_int(doc, field_name):
         raise ValueError(f"{field_name} is missing or empty.")
     return int(value)
 
-
-
+#-------------------------------------------
+###1.predicting patient visit type
 @app.get("/predict/{patient_id}")
 async def predict_visit_type_from_db(patient_id: str):
     try:
@@ -177,7 +271,7 @@ async def predict_visit_type_from_db(patient_id: str):
 
         # 3. Build prompt & call model
         prompt = build_prompt(patient)
-        GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+        GROQ_API_KEY = "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"
         result = call_groq_api(prompt, GROQ_API_KEY)
         prediction = parse_response(result)
 
@@ -191,19 +285,9 @@ async def predict_visit_type_from_db(patient_id: str):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
     
+#---------------------------------------------
 
-
-
-
-
-
-
-
-
-
-
-
-
+###2.Face capture using Yolo and face match using Faiss
 
 
 
@@ -241,7 +325,7 @@ async def load_index_from_disk():
 # -------------------------------
 # Match Face Endpoint
 # -------------------------------
-
+matched_patients = [] 
 index_lock=asyncio.Lock()
 @app.post("/match_face/")
 async def match_face(file: UploadFile = File(...)):
@@ -277,9 +361,19 @@ async def match_face(file: UploadFile = File(...)):
 
         if similarity > 0.9:  # Reduce threshold to test
             match = metadata[index]
+            
+            #to store matched patient and send result to frontend
+            patient={
+                "name":match.get("name"),
+                "age":match.get("age"),
+                "medical_id":match.get("medical_id")
+            }
+            matched_patients.append(patient)
+            
             return {
                 "status": "matched",
-                "name": match["name"]
+                "name": match["name"], 
+                #"medical_id":match["medical_id"]
             }
 
         return {"status": "not_found"}
@@ -289,8 +383,19 @@ async def match_face(file: UploadFile = File(...)):
             "status": "error",
             "message": f"Exception occurred: {str(e)}"
         })
-executor = ThreadPoolExecutor()
+executor = ThreadPoolExecutor()  
 
+
+@app.get("/match_patients")
+async def get_matched_patients():
+    return matched_patients
+
+
+@app.post("/clear_matched_patients/")
+async def clear_matched_patients():
+    global matched_patients
+    matched_patients.clear()
+    return {"status": "cleared", "message": "All matched patients removed."}
 
 
 async def append_encoding_to_index(new_encoding, new_metadata):
@@ -375,9 +480,12 @@ async def register_patient(
         # Format phone number
         if not phone_number.startswith("+"):
             phone_number = "+91" + phone_number.lstrip("0")
-
+        
+        #medical id 
+        medical_id = f"MD{str(uuid.uuid4())[:4].upper()}"
         # Create the patient document
         patient_doc = {
+            "medical_id":medical_id,
             "name": name,
             "dob": dob,
             "address": address,
@@ -401,20 +509,22 @@ async def register_patient(
         if face_embedding:
             await append_encoding_to_index(
                 face_embedding,
-                {"name":name}
+                {"name":name,
+                "age":age,
+                "medical_id":medical_id}
             )
             
-        # Send SMS using Twilio
-        message = twilio_client.messages.create(
-            body=f"Hi {name}, you are successfully registered at the hospital.",
-            from_=twilio_number,
-            to=phone_number
-        )
+        # # Send SMS using Twilio
+        # message = twilio_client.messages.create(
+        #     body=f"Hi {name}, you are successfully registered at the hospital.",
+        #     from_=twilio_number,
+        #     to=phone_number
+        # )
 
         return {
             "message": "Patient registered successfully",
-            "sms_sid": message.sid,
-            "patient_id": str(insert_result.inserted_id)
+            #"sms_sid": message.sid,
+            #"patient_id": str(insert_result.inserted_id)
         }
 
     except Exception as e:
