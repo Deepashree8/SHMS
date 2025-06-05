@@ -1,5 +1,3 @@
-// src/pages/Login.jsx
-
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import '../styles/Login.css';
@@ -8,25 +6,43 @@ const Login = () => {
   const [role, setRole] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
 
-    if (!role) {
-      alert('Please select a role.');
+    if (!role || !username || !password) {
+      alert('Please fill all fields and select a role.');
       return;
     }
 
-    // Simulate login logic
-    if (username && password) {
+    setLoading(true);
+
+    try {
+      const response = await fetch('http://localhost:8000/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role, username, password })
+      });
+
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.detail || 'Login failed');
+      }
+
+      const data = await response.json();
+
       if (role === 'doctor') {
-        navigate('/doctor');
+        localStorage.setItem('doctorId', data.doctor_id);
+        navigate(`/doctor/${data.doctor_id}`);
       } else if (role === 'receptionist') {
         navigate('/receptionist');
       }
-    } else {
-      alert('Please enter username and password.');
+    } catch (err) {
+      alert(`Login error: ${err.message}`);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -68,7 +84,9 @@ const Login = () => {
             required
           />
 
-          <button type="submit" className="login-btn">Login</button>
+          <button type="submit" className="login-btn" disabled={loading}>
+            {loading ? 'Logging in...' : 'Login'}
+          </button>
         </form>
       </div>
     </div>

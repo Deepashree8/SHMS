@@ -5,6 +5,7 @@ from bson.objectid import ObjectId
 from database import patients_collection
 from database import doctor_collection
 from database import appointment_collection
+from database import receptionist_collection
 from pydantic import BaseModel
 #from twilio.rest import Client
 import pandas as pd
@@ -35,7 +36,9 @@ import h5py
 import uuid
 from fastapi.encoders import jsonable_encoder
 from fastapi import Query
-
+from fastapi import APIRouter, HTTPException
+from bson import ObjectId
+from datetime import datetime
 from fastapi import APIRouter
 from motor.motor_asyncio import AsyncIOMotorClient
 
@@ -82,12 +85,108 @@ class AppointmentCreate(BaseModel):
     time: str
     reason: str
 
-
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+    role: str
 
 ##1.Root
 @app.get("/")
 def read_root():
     return {"message": "FastAPI server is running!"}
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+    role: str
+
+
+##login doctor and receptionist
+@app.post("/login")
+async def login(data: LoginRequest):
+    if data.role == "doctor":
+        # Match on 'name' and 'password' fields for doctors
+        user = await doctor_collection.find_one({
+            "name": data.username,
+            "password": data.password
+        })
+
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid doctor credentials")
+
+        return {
+            "message": "Login successful",
+            "doctor_id": str(user["_id"]),
+            "name": user["name"],
+            "department": user.get("department", "")
+        }
+
+    elif data.role == "receptionist":
+        # Match on 'name' and 'password' fields for receptionists
+        user = await receptionist_collection.find_one({
+            "name": data.username,
+            "password": data.password
+        })
+
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid receptionist credentials")
+
+        return {
+            "message": "Login successful",
+            "receptionist_id": str(user["_id"]),
+            "name": user["name"]
+        }
+
+    else:
+        raise HTTPException(status_code=400, detail="Invalid role")
+
+
+
+
+@app.put("/appointments/{appointment_id}/log_visit")
+async def log_visit(appointment_id: str, log: dict):
+    try:
+        appointment = await appointment_collection.find_one({"_id": ObjectId(appointment_id)})
+        if not appointment:
+            raise HTTPException(status_code=404, detail="Appointment not found.")
+
+        visit_entry = {
+            "date": log.get("date", datetime.today().strftime("%Y-%m-%d")),
+            "time": log.get("time", datetime.now().strftime("%H:%M")),
+            "reason": log.get("reason", ""),
+            "diagnosis": log.get("diagnosis", ""),
+            "remarks": log.get("remarks", ""),
+        }
+
+        await appointment_collection.update_one(
+            {"_id": ObjectId(appointment_id)},
+            {"$push": {"visit_logs": visit_entry}}
+        )
+
+        return {"message": "Visit log added successfully.", "visit": visit_entry}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+    
+@app.get("/appointments/patient/{patient_id}/visit_logs")
+async def get_visit_logs_for_patient(patient_id: str):
+    try:
+        cursor = appointment_collection.find({"patient_id": ObjectId(patient_id)})
+        visit_logs = []
+
+        async for appt in cursor:
+            logs = appt.get("visit_logs", [])
+            visit_logs.extend(logs)
+
+        # Sort logs by date and time (optional)
+        visit_logs.sort(key=lambda log: (log.get("date", ""), log.get("time", "")))
+
+        return visit_logs
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 
@@ -145,6 +244,7 @@ async def get_appointments_for_doctor(doctor_id: str):
                 "reason": a["reason"],
                 "doctorDiagnosis": a.get("doctorDiagnosis", ""),
                 "remarks": a.get("remarks", ""),
+                "patient_id": str(a["patient_id"]),
                 "patient": {
                     "name": patient.get("name", ""),
                     "age": patient.get("age", ""),

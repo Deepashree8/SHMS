@@ -1,30 +1,24 @@
-import React from 'react';
-import { Routes, Route } from 'react-router-dom';
-import SidebarDoctor from '../components/SidebarDoctor';
-import Navbar from '../components/Navbar';
-import Calendar from '../components/Calendar';
-import Appointments from './DoctorAppointments'; 
-import Patients from './DoctorPatients';           
-import '../styles/Dashboard.css';
+import React from "react";
+import { Routes, Route, useParams } from "react-router-dom";
+import SidebarDoctor from "../components/SidebarDoctor";
+import Navbar from "../components/Navbar";
+import Calendar from "../components/Calendar";
+import Appointments from "./DoctorAppointments";
+import Patients from "./DoctorPatients";
+import "../styles/Dashboard.css";
+import { Outlet} from 'react-router-dom';
 
 const DoctorDashboard = () => {
+  const { doctorId } = useParams();
+
   return (
     <div className="dashboard-wrapper">
       <Navbar />
       <div className="dashboard-body">
         <SidebarDoctor />
         <div className="main-content">
-          <Routes>
-            <Route path="/" element={
-              <>
-                <h1>Welcome Doctor</h1>
-                <Calendar />
-
-              </>
-            } />
-            <Route path="appointments" element={<Appointments />} />
-            <Route path="patients" element={<Patients />} />
-          </Routes>
+          {/* Nested route components render here */}
+          <Outlet context={{ doctorId }} />
         </div>
       </div>
     </div>
@@ -32,3 +26,4 @@ const DoctorDashboard = () => {
 };
 
 export default DoctorDashboard;
+

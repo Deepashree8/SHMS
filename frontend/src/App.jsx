@@ -11,9 +11,27 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
+        
         <Route path="/receptionist/*" element={<ReceptionistDashboard />} />
-        <Route path="/doctor/*" element={<DoctorDashboard />} />
-        <Route path="/patienrdetails" element={<PatientDetails/>}></Route>
+
+        {/* DoctorDashboard is a parent layout with nested routes */}
+        <Route path="/doctor/:doctorId" element={<DoctorDashboard />}>
+          {/* Default index route under doctor/:doctorId */}
+          <Route
+            index
+            element={
+              <>
+                <h1>Welcome Doctor</h1>
+                <Calendar />
+              </>
+            }
+          />
+          <Route path="appointments" element={<Appointments />} />
+          <Route path="patients" element={<Patients />} />
+        </Route>
+
+        {/* Other routes */}
+        <Route path="/patientdetails" element={<PatientDetails />} />
       </Routes>
     </BrowserRouter>
   );
