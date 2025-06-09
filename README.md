@@ -1,6 +1,10 @@
 To run the project 
 
-backend>python facecap.py 
-backend>unicorn main:app --reload 
+1.Pip install requirement.txt
+
+2.In database.py 
+3.backend>python facecap.py 
+4.backend>unicorn main:app --reload 
        
-frontend>npm run dev
+4.frontend>npm install
+5.frontend>npm run dev
