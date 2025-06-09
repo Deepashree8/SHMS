@@ -1,9 +1,28 @@
+##core libraries
+numpy
+pandas
+scipy
+
+##Face Recognition
+face-recognition
+face-recognition_models
+dlib
+opencv-python
+
+##FastAPI backend
 fastapi
 uvicorn
+startlette
+
+##MongoDB
 motor
-python-multipart
-pydantic
-h5py
-uvicorn 
-twilio 
 pymongo
+pydantic
+
+##others
+python-multipart
+h5py 
+twilio 
+python-dotenv
+requests
+
